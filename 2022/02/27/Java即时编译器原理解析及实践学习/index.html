@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"jianwuyang.github.io","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="一、导读Java为了实现“一次编译，处处运行”的特性，把编译的过程分成两部分：  将代码编译成通用的中间形式——字节码 再有解释器将字节码逐条解释为机器码来执行。  为了优化Java的性能，JVM在解释器之外引入了即使（Just In Time）编译器：当程序运行时，解释器首先发挥作用，代码可以直接执行，随着时间推移，即使编译器逐渐发挥作用，把越来越多的代码编译优化成本地代码，来获取更高的执行效率">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Java即时编译器原理解析及实践学习">
+<meta property="og:url" content="https://jianwuyang.github.io/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/index.html">
+<meta property="og:site_name" content="学习笔记">
+<meta property="og:description" content="一、导读Java为了实现“一次编译，处处运行”的特性，把编译的过程分成两部分：  将代码编译成通用的中间形式——字节码 再有解释器将字节码逐条解释为机器码来执行。  为了优化Java的性能，JVM在解释器之外引入了即使（Just In Time）编译器：当程序运行时，解释器首先发挥作用，代码可以直接执行，随着时间推移，即使编译器逐渐发挥作用，把越来越多的代码编译优化成本地代码，来获取更高的执行效率">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://jianwuyang.github.io/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/Java%E6%89%A7%E8%A1%8C%E7%83%AD%E7%82%B9%E4%BB%A3%E7%A0%81%E5%88%A4%E5%AE%9A.png">
+<meta property="article:published_time" content="2022-02-27T08:31:52.000Z">
+<meta property="article:modified_time" content="2022-02-27T08:33:32.120Z">
+<meta property="article:author" content="JianWu Yang">
+<meta property="article:tag" content="Java">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://jianwuyang.github.io/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/Java%E6%89%A7%E8%A1%8C%E7%83%AD%E7%82%B9%E4%BB%A3%E7%A0%81%E5%88%A4%E5%AE%9A.png">
+
+<link rel="canonical" href="https://jianwuyang.github.io/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Java即时编译器原理解析及实践学习 | 学习笔记</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">学习笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://jianwuyang.github.io/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="JianWu Yang">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学习笔记">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Java即时编译器原理解析及实践学习
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 16:31:52 / 修改时间：16:33:32" itemprop="dateCreated datePublished" datetime="2022-02-27T16:31:52+08:00">2022-02-27</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="一、导读"><a href="#一、导读" class="headerlink" title="一、导读"></a>一、导读</h1><p>Java为了实现“一次编译，处处运行”的特性，把编译的过程分成两部分：</p>
+<ol>
+<li>将代码编译成通用的中间形式——字节码</li>
+<li>再有解释器将字节码逐条解释为机器码来执行。</li>
+</ol>
+<p>为了优化Java的性能，JVM在解释器之外引入了即使（Just In Time）编译器：当程序运行时，解释器首先发挥作用，代码可以直接执行，随着时间推移，即使编译器逐渐发挥作用，把越来越多的代码编译优化成本地代码，来获取更高的执行效率。解释器这时可以作为编译运行的降级手段，在一些不可靠的编译优化出现问题时，再切换回解释执行，保证程序可以正常运行。</p>
+<span id="more"></span>
+<h1 id="二、Java的执行过程"><a href="#二、Java的执行过程" class="headerlink" title="二、Java的执行过程"></a>二、Java的执行过程</h1><p>Java的执行过程可以分为两个部分，第一步由javac将源码编译成字节码，在这个过程中会进行词法分析、语法分析、语义分析，编译原理中这部分的编译称为前端编译。接下来无需编译直接逐条将字节码解释执行，在解释执行的过程中，虚拟机同时对程序运行的信息进行收集，在这些信息的基础上，编译器会逐渐发挥作用，它会进行后端编译————把字节码编译成机器码，但不是所有的代码都会被编译，只有被JVM认定为的热点代码，才可能被编译。</p>
+<blockquote>
+<p>词法分析（lexical analysis）：将字符序列转换为记号（Token）序列的过程</br><br>语法分析（syntactic analysis）：是根据某种给定的形式文法对由单词序列构成的输入文本进行分析并确定其语法结构的过程</br><br>语义分析：是编译过程的一个逻辑阶段，语义分析的任务是对结构上下正确的源程序进行上下文有关性质的审查，进行类型审查。语义分析是审查源程序有无语义错误，为代码生成阶段收集类型信息。</p>
+</blockquote>
+<h2 id="1）热点代码的认定"><a href="#1）热点代码的认定" class="headerlink" title="1）热点代码的认定"></a>1）热点代码的认定</h2><p>JVM会设置一个阈值，当方法或者代码块在一定时间内的调用次数超过这个阈值就会被编译，存储CodeCache中。当下次执行时，再遇到这段代码，就会从CodeCache中读取机器码，直接执行，以此来提升程序运行的性能。</p>
+<img src="/2022/02/27/Java%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8%E5%8E%9F%E7%90%86%E8%A7%A3%E6%9E%90%E5%8F%8A%E5%AE%9E%E8%B7%B5%E5%AD%A6%E4%B9%A0/Java%E6%89%A7%E8%A1%8C%E7%83%AD%E7%82%B9%E4%BB%A3%E7%A0%81%E5%88%A4%E5%AE%9A.png" class="" title="热点代码判定">
+<h2 id="2）JVM中的编译器"><a href="#2）JVM中的编译器" class="headerlink" title="2）JVM中的编译器"></a>2）JVM中的编译器</h2><p>JVM中集成了两种编译器，Client Compiler 和 Server Compiler。Client Compiler注重启动速度和局部的优化，Server Compiler则更加关注全局的优化，性能会更好，但由于会进行更多的全局分析，所以启动速度会变慢。</p>
+<p><strong>Client Compiler</strong> </p>
+<p>HotSopt VM带有一个Client Compiler C1编译器。这种编译器启动速度快，但是性能比较 Server Compiler来说会差一些，C1会做三件事情：</p>
+<ul>
+<li>局部简单的可靠优化，比如字节码上的一些基础优化，方法内联，常量传播等，放弃许多耗时较长的全局优化。</li>
+<li>将字节码构造成高级中间表示（Hign-level Intermediate Representation，HIR），HIR与平台无关，通常采用图结构，更适合JVM对程序进行优化。</li>
+<li>最后将HIR转换成低级中间表示（Low-level Intermediate Representation。LIR），在LIR的基础上会进行寄存器分配、窥孔优化（局部的优化方式，编译器在一个基本块或多个基本块中，针对已经生成的代码，结合CPU自己指令的特点，通过一些认为可能代码性能提升的转换规则或者通过整体的分析，进行指令转换，来提升代码性能）等操作，最终生成机器码。</li>
+</ul>
+<p><strong>Server Compiler</strong> </p>
+<p>Server Compiler主要关注一些编译耗时较长的全局优化，甚至还会根据程序运行的信息进行一些不可靠的激进优化。这种编译器的启动时间长，适用于长时间运行的后台程序，它的性能通常比Cilent Compiler 高30%以上。目前HotSpot虚拟机中使用的Server Compiler有两种：C2和Graal。</p>
+<p><strong>C2 Compiler</strong> </p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+
+        
+
+
+        
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E5%AF%BC%E8%AF%BB"><span class="nav-number">1.</span> <span class="nav-text">一、导读</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C%E3%80%81Java%E7%9A%84%E6%89%A7%E8%A1%8C%E8%BF%87%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">二、Java的执行过程</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1%EF%BC%89%E7%83%AD%E7%82%B9%E4%BB%A3%E7%A0%81%E7%9A%84%E8%AE%A4%E5%AE%9A"><span class="nav-number">2.1.</span> <span class="nav-text">1）热点代码的认定</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2%EF%BC%89JVM%E4%B8%AD%E7%9A%84%E7%BC%96%E8%AF%91%E5%99%A8"><span class="nav-number">2.2.</span> <span class="nav-text">2）JVM中的编译器</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">JianWu Yang</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">JianWu Yang</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
