@@ -21,6 +21,7 @@ email:
 description: "个人博客，记录一点东西"
 logo: "/assets/images/云朵.png"
 breadcrumbs: true
+show_date: true
 repository: "JianwuYang/JianwuYang.github.io"
 twitter_username: username
 github_username: username
