@@ -63,7 +63,7 @@ plugins:
 author:
   name   : "Jianwu Yang"
   avatar : "/assets/images/profile.jpg"
-  bio    : "练习时长八年的代码练习生"
+  bio    : "代码练习生"
   links:
     - label: "Website"
       icon: "fas fa-fw fa-link"
