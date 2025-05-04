@@ -89,6 +89,8 @@ defaults:
       author_profile: false
       read_time: false
       comments: true
+      previous: false
+      next: false
       share: false
       related: true
       show_date: true
